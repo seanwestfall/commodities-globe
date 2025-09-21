@@ -510,7 +510,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
                   borderRadius: BorderRadius.circular(12),
                   color: Colors.blue.withOpacity(0.5)),
               child: Text(
-                'Flutter Earth Globe',
+                'Commodities Globe',
                 style: Theme.of(context)
                     .textTheme
                     .titleMedium
