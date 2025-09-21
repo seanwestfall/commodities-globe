@@ -9,7 +9,7 @@ import 'package:flutter_earth_globe/sphere_style.dart';
 
 void main() {
   runApp(MaterialApp(
-    title: 'Flutter Earth Globe',
+    title: 'Commodities Globe',
     theme: ThemeData(primarySwatch: Colors.blue),
     debugShowCheckedModeBanner: false,
     home: const Home(),
