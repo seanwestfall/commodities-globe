@@ -1,575 +1,383 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_earth_globe/flutter_earth_globe.dart';
 import 'package:flutter_earth_globe/flutter_earth_globe_controller.dart';
-import 'package:flutter_earth_globe/globe_coordinates.dart';
-import 'package:flutter_earth_globe/point.dart';
-import 'package:flutter_earth_globe/point_connection.dart';
-import 'package:flutter_earth_globe/point_connection_style.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_earth_globe/sphere_style.dart';
+import 'package:flutter_earth_globe/point.dart';
+import 'dart:math' as math;
 
 void main() {
-  runApp(MaterialApp(
-    title: 'Commodities Globe',
-    theme: ThemeData(primarySwatch: Colors.blue),
-    debugShowCheckedModeBanner: false,
-    home: const Home(),
-  ));
+  runApp(const MyApp());
 }
 
-class Home extends StatefulWidget {
-  const Home({Key? key}) : super(key: key);
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
 
   @override
-  _HomeState createState() => _HomeState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Earth Globe with Satellites',
+      theme: ThemeData.dark(),
+      home: const GlobeScreen(),
+    );
+  }
 }
 
-class _HomeState extends State<Home> with TickerProviderStateMixin {
-  final GlobalKey<ScaffoldState> _key = GlobalKey();
-  String? _selectedSurface;
-  GlobeCoordinates? _hoverCoordinates;
-  GlobeCoordinates? _clickCoordinates;
+class Satellite {
+  final String name;
+  final double altitude; // Relative to Earth radius (1.0 = Earth surface)
+  final double inclination; // Orbital inclination in radians
+  double orbitAngle; // Current position in orbit (radians)
+  final double orbitSpeed; // Radians per frame
+  final Color color;
+  final String type;
+  
+  Satellite({
+    required this.name,
+    required this.altitude,
+    required this.inclination,
+    required this.orbitAngle,
+    required this.orbitSpeed,
+    required this.color,
+    required this.type,
+  });
+  
+  void updatePosition(double deltaTime) {
+    orbitAngle += orbitSpeed * deltaTime;
+    if (orbitAngle > 2 * math.pi) {
+      orbitAngle -= 2 * math.pi;
+    }
+  }
+  
+  // Get latitude and longitude for display on globe
+  Map<String, double> getLatLng() {
+    // Convert orbital position to lat/lng
+    final lat = math.asin(math.sin(orbitAngle) * math.sin(inclination)) * 180 / math.pi;
+    final lng = (math.atan2(
+      math.sin(orbitAngle) * math.cos(inclination),
+      math.cos(orbitAngle)
+    ) * 180 / math.pi);
+    
+    return {'lat': lat, 'lng': lng};
+  }
+}
+
+class GlobeScreen extends StatefulWidget {
+  const GlobeScreen({Key? key}) : super(key: key);
+
+  @override
+  State<GlobeScreen> createState() => _GlobeScreenState();
+}
+
+class _GlobeScreenState extends State<GlobeScreen> with SingleTickerProviderStateMixin {
   late FlutterEarthGlobeController _controller;
-  final List<String> _textures = [
-    'assets/2k_earth-day.jpg',
-    'assets/2k_earth-night.jpg',
-    'assets/2k_jupiter.jpg',
-    'assets/2k_mars.jpg',
-    'assets/2k_mercury.jpg',
-    'assets/2k_moon.jpg',
-    'assets/2k_neptune.jpg',
-    'assets/2k_saturn.jpg',
-    'assets/2k_stars.jpg',
-    'assets/2k_sun.jpg',
-    'assets/2k_uranus.jpg',
-    'assets/2k_venus_surface.jpg'
-  ];
-
-  late List<Point> points;
-
-  List<PointConnection> connections = [];
-
-  Widget pointLabelBuilder(
-      BuildContext context, Point point, bool isHovering, bool visible) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-          color: isHovering
-              ? Colors.blueAccent.withOpacity(0.8)
-              : Colors.blueAccent.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 10,
-                spreadRadius: 2)
-          ]),
-      child: Text(point.label ?? '',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Colors.white,
-              )),
-    );
-  }
-
-  Widget connectionLabelBuilder(BuildContext context,
-      PointConnection connection, bool isHovering, bool visible) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-          color: isHovering
-              ? Colors.blueAccent.withOpacity(0.8)
-              : Colors.blueAccent.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 10,
-                spreadRadius: 2)
-          ]),
-      child: Text(
-        connection.label ?? '',
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Colors.white,
-            ),
-      ),
-    );
-  }
+  late AnimationController _animationController;
+  final List<Satellite> _satellites = [];
+  bool _showSatellites = true;
+  String? _selectedSatellite;
 
   @override
-  initState() {
+  void initState() {
+    super.initState();
+    
     _controller = FlutterEarthGlobeController(
-        rotationSpeed: 0.05,
-        zoom: 0.5,
-        isRotating: false,
-        isBackgroundFollowingSphereRotation: true,
-        background: Image.asset('assets/2k_stars.jpg').image,
-        surface: Image.asset('assets/2k_earth-day.jpg').image);
-    points = [
-      Point(
-          id: '1',
-          coordinates: const GlobeCoordinates(51.5072, 0.1276),
-          label: 'London',
-          // labelBuilder: pointLabelBuilder,
-          style: const PointStyle(color: Colors.red, size: 6)),
-      Point(
-          id: '2',
-          // showTitleOnHover: true,
-          // labelBuilder: pointLabelBuilder,
-          coordinates: const GlobeCoordinates(40.7128, -74.0060),
-          style: const PointStyle(color: Colors.green),
-          onHover: () {},
-          label: 'New York'),
-      Point(
-          id: '3',
-          // labelBuilder: pointLabelBuilder,
-          coordinates: const GlobeCoordinates(35.6895, 139.6917),
-          style: const PointStyle(color: Colors.blue),
-          onHover: () {},
-          label: 'Tokyo'),
-      Point(
-          id: '4',
-          isLabelVisible: false,
-          // labelBuilder: pointLabelBuilder,
-          onTap: () {
-            Future.delayed(Duration.zero, () {
-              showDialog(
-                  context: context,
-                  builder: (context) => const AlertDialog(
-                        title: Text('Center'),
-                        content: Text('This is the center of the globe'),
-                      ));
-            });
-          },
-          coordinates: const GlobeCoordinates(0, 0),
-          style: const PointStyle(color: Colors.yellow),
-          label: 'Center'),
-    ];
-    connections = [
-      PointConnection(
-          id: '1',
-          onTap: () {
-            showDialog(
-                context: context,
-                builder: (context) => const AlertDialog(
-                      title: Text('London to New York'),
-                      content: Text(
-                          'This is a connection between London and New York'),
-                    ));
-          },
-          start: points[0].coordinates,
-          end: points[1].coordinates,
-          isMoving: true,
-          labelBuilder: connectionLabelBuilder,
-          isLabelVisible: false,
-          curveScale: 1.2,
-          style: const PointConnectionStyle(
-              type: PointConnectionType.dotted,
-              color: Colors.red,
-              lineWidth: 2,
-              dashSize: 6,
-              spacing: 10),
-          label: 'London to New York'),
-      PointConnection(
-          start: points[1].coordinates,
-          end: points[3].coordinates,
-          isMoving: true,
-          labelBuilder: connectionLabelBuilder,
-          id: '2',
-          style: const PointConnectionStyle(type: PointConnectionType.dashed),
-          label: 'New York to Center'),
-      PointConnection(
-          label: 'Tokyo to Center',
-          labelBuilder: connectionLabelBuilder,
-          start: points[2].coordinates,
-          end: points[3].coordinates,
-          curveScale: 1.6,
-          id: '3')
-    ];
-    _controller.onLoaded = () {
-      setState(() {
-        _selectedSurface = _textures[0];
-      });
-    };
+      rotationSpeed: 0.05,
+      isRotating: false,
+      isBackgroundFollowingSphereRotation: true,
+      background: Image.asset('assets/stars.jpg').image,
+      surface: Image.asset('assets/earth_surface.jpg').image,
+    );
 
-    for (var point in points) {
-      _controller.addPoint(point);
+    _initializeSatellites();
+    
+    // Animation for satellite movement
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 16), // ~60fps
+    )..repeat();
+    
+    _animationController.addListener(() {
+      if (mounted) {
+        setState(() {
+          for (var satellite in _satellites) {
+            satellite.updatePosition(0.016);
+          }
+          _updateSatellitePoints();
+        });
+      }
+    });
+  }
+
+  void _initializeSatellites() {
+    // ISS - Low Earth Orbit
+    _satellites.add(Satellite(
+      name: 'ISS',
+      altitude: 0.065,
+      inclination: 51.6 * math.pi / 180,
+      orbitAngle: 0,
+      orbitSpeed: 0.5,
+      color: Colors.cyanAccent,
+      type: 'ISS',
+    ));
+    
+    // GPS Satellites - Medium Earth Orbit
+    for (int i = 0; i < 6; i++) {
+      _satellites.add(Satellite(
+        name: 'GPS-${i + 1}',
+        altitude: 0.32,
+        inclination: 55 * math.pi / 180,
+        orbitAngle: i * 60.0 * math.pi / 180,
+        orbitSpeed: 0.15,
+        color: Colors.greenAccent,
+        type: 'GPS',
+      ));
+    }
+    
+    // Starlink - Low Earth Orbit
+    for (int i = 0; i < 12; i++) {
+      _satellites.add(Satellite(
+        name: 'Starlink-${i + 1}',
+        altitude: 0.085,
+        inclination: 53 * math.pi / 180,
+        orbitAngle: i * 30.0 * math.pi / 180,
+        orbitSpeed: 0.45,
+        color: Colors.orangeAccent,
+        type: 'Starlink',
+      ));
+    }
+    
+    // Geostationary satellites
+    for (int i = 0; i < 4; i++) {
+      _satellites.add(Satellite(
+        name: 'GEO-${i + 1}',
+        altitude: 0.55,
+        inclination: 0,
+        orbitAngle: i * 90.0 * math.pi / 180,
+        orbitSpeed: 0.05,
+        color: Colors.purpleAccent,
+        type: 'GEO',
+      ));
+    }
+    
+    _updateSatellitePoints();
+  }
+
+  void _updateSatellitePoints() {
+    if (!_showSatellites) {
+      _controller.points.clear();
+      return;
     }
 
-    super.initState();
-  }
-
-  Widget getDividerText(String text) => Card(
-        child: SizedBox(
-          width: 250,
-          child: Row(
-            children: [
-              Flexible(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  color: Colors.black38,
-                  height: 2,
-                ),
-              ),
-              Text(
-                text,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              Flexible(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  color: Colors.black38,
-                  height: 2,
-                ),
-              ),
-            ],
+    _controller.points.clear();
+    
+    for (var satellite in _satellites) {
+      final coords = satellite.getLatLng();
+      
+      _controller.points.add(
+        Point(
+          id: satellite.name,
+          latitude: coords['lat']!,
+          longitude: coords['lng']!,
+          label: satellite.name,
+          style: PointStyle(
+            color: satellite.color,
+            size: 8,
+            border: BorderSide(color: Colors.white, width: 1),
           ),
+          isLabelVisible: false,
+          onTap: () {
+            setState(() {
+              _selectedSatellite = '${satellite.name} (${satellite.type})';
+            });
+          },
+          onHover: () {
+            // Optional: show info on hover
+          },
         ),
       );
+    }
+  }
 
-  getTextures() {
-    return ListView(
-        shrinkWrap: true,
-        children: _textures
-            .map((texture) => Card(
-                  clipBehavior: Clip.hardEdge,
-                  color: _selectedSurface == texture
-                      ? Colors.cyan.withOpacity(0.5)
-                      : Colors.white.withOpacity(0.5),
-                  child: InkWell(
-                    onTap: () {
-                      _controller.loadSurface(Image.asset(
-                        texture,
-                      ).image);
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
 
-                      if (texture.contains('sun') ||
-                          texture.contains('venus') ||
-                          texture.contains('mars')) {
-                        _controller.setSphereStyle(SphereStyle(
-                            shadowColor: Colors.orange.withOpacity(0.8),
-                            shadowBlurSigma: 20));
-                      } else {
-                        _controller.setSphereStyle(const SphereStyle());
-                      }
-                      setState(() {
-                        _selectedSurface = texture;
-                      });
-                      // _controller.changeSurface(textures[i]);
-                    },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Padding(
-                            padding: const EdgeInsets.all(2),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.asset(
-                                texture,
-                                width: 100,
-                              ),
-                            )),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Text(texture
-                            .replaceFirst('assets/', '')
-                            .split('.')[0]
-                            .replaceAll('_', ' ')
-                            .split(' ')[1]
-                            .toUpperCase())
-                      ],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text('Earth Globe with Satellites'),
+        backgroundColor: Colors.black87,
+        actions: [
+          IconButton(
+            icon: Icon(_showSatellites ? Icons.visibility : Icons.visibility_off),
+            onPressed: () {
+              setState(() {
+                _showSatellites = !_showSatellites;
+                _updateSatellitePoints();
+              });
+            },
+            tooltip: _showSatellites ? 'Hide Satellites' : 'Show Satellites',
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          FlutterEarthGlobe(
+            controller: _controller,
+            radius: 150,
+          ),
+          Positioned(
+            left: 20,
+            bottom: 20,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Active Satellites',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                ))
-            .toList());
-  }
-
-  Widget getListAction(String label, Widget child, {Widget? secondary}) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(label),
-                const SizedBox(
-                  width: 10,
-                ),
-                child
-              ],
-            ),
-            secondary ?? const SizedBox(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget leftSideContent() {
-    return SizedBox(
-      height: MediaQuery.of(context).size.height,
-      width: 220,
-      child: ListView(
-        shrinkWrap: true,
-        children: [
-          getListAction(
-            'Rotate',
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Switch(
-                    value: _controller.isRotating,
-                    onChanged: (value) {
-                      if (value) {
-                        _controller.startRotation();
-                      } else {
-                        _controller.stopRotation();
-                      }
-                      setState(() {});
-                    }),
-                IconButton(
-                    onPressed: () {
-                      _controller.resetRotation();
-                    },
-                    icon: const Icon(Icons.refresh)),
-              ],
+                  const SizedBox(height: 12),
+                  _buildLegendItem('ISS', Colors.cyanAccent, '1 satellite'),
+                  _buildLegendItem('GPS', Colors.greenAccent, '6 satellites'),
+                  _buildLegendItem('Starlink', Colors.orangeAccent, '12 satellites'),
+                  _buildLegendItem('GEO', Colors.purpleAccent, '4 satellites'),
+                  if (_selectedSatellite != null) ...[
+                    const SizedBox(height: 12),
+                    const Divider(color: Colors.white24),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Selected:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _selectedSatellite!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
-          getListAction('Rotation speed', Container(),
-              secondary: Slider(
-                  value: _controller.rotationSpeed,
-                  onChanged: _controller.isRotating
-                      ? (value) {
-                          _controller.rotationSpeed = value;
-                          setState(() {});
-                        }
-                      : null)),
-          getListAction('Zoom', Container(),
-              secondary: Slider(
-                  min: _controller.minZoom,
-                  max: _controller.maxZoom,
-                  value: _controller.zoom,
-                  divisions: 8,
-                  onChanged: (value) {
-                    _controller.setZoom(value);
-                    setState(() {});
-                  })),
-          getDividerText('Points'),
-          ...points
-              .map((e) => getListAction(
-                  e.label ?? '',
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Checkbox(
-                        value: _controller.points
-                            .where((element) => element.id == e.id)
-                            .isNotEmpty,
-                        onChanged: (value) {
-                          if (value == true) {
-                            _controller.addPoint(e);
-                          } else {
-                            _controller.removePoint(e.id);
-                          }
-                          setState(() {});
-                        },
-                      ),
-                      const SizedBox(
-                        width: 10,
-                      ),
-                      IconButton(
-                          onPressed: () {
-                            _controller.focusOnCoordinates(e.coordinates,
-                                animate: true);
-                          },
-                          icon: const Icon(Icons.location_on))
-                    ],
+          Positioned(
+            right: 20,
+            bottom: 20,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Controls',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
-                  secondary: _controller.points
-                          .where((element) => element.id == e.id)
-                          .isNotEmpty
-                      ? Row(
-                          children: [
-                            Slider(
-                                value: e.style.size / 30,
-                                onChanged: (value) {
-                                  value = value * 30;
-                                  _controller.updatePoint(e.id,
-                                      style: e.style.copyWith(size: value));
-                                  e.style = e.style.copyWith(size: value);
-                                  setState(() {});
-                                }),
-                          ],
-                        )
-                      : null))
-              .toList(),
-          getDividerText('Connections'),
-          ...connections
-              .map((e) => getListAction(
-                  e.label ?? '',
-                  Checkbox(
-                    value: _controller.connections
-                        .where((element) => element.id == e.id)
-                        .isNotEmpty,
-                    onChanged: (value) {
-                      if (value == true) {
-                        _controller.addPointConnection(e, animateDraw: true);
-                      } else {
-                        _controller.removePointConnection(e.id);
-                      }
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      _controller.isRotating = !_controller.isRotating;
                       setState(() {});
                     },
-                  )))
-              .toList(),
+                    icon: Icon(_controller.isRotating ? Icons.pause : Icons.play_arrow),
+                    label: Text(_controller.isRotating ? 'Pause' : 'Rotate'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      _controller.resetZoom();
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reset'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget getLeftSide() {
-    if (MediaQuery.of(context).size.width < 800) {
-      return IconButton.filled(
-          onPressed: () {
-            _key.currentState?.openDrawer();
-          },
-          icon: const Icon(Icons.menu));
-    } else {
-      return leftSideContent();
-    }
-  }
-
-  Widget rightSideContent() {
-    return SizedBox(
-      width: 220,
-      height: MediaQuery.of(context).size.height - 10,
-      child: getTextures(),
-    );
-  }
-
-  Widget getRightSide() {
-    if (MediaQuery.of(context).size.width < 800) {
-      return IconButton.filled(
-          onPressed: () {
-            _key.currentState?.openEndDrawer();
-          },
-          icon: const Icon(Icons.menu));
-    } else {
-      return rightSideContent();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    double radius = MediaQuery.of(context).size.width < 500
-        ? ((MediaQuery.of(context).size.width / 3.8) - 20)
-        : 120;
-    return Scaffold(
-      key: _key,
-      drawerEnableOpenDragGesture: true,
-      endDrawerEnableOpenDragGesture: true,
-      drawer: MediaQuery.of(context).size.width < 800
-          ? Container(
-              color: Colors.white38,
-              child: leftSideContent(),
-            )
-          : null,
-      endDrawer: MediaQuery.of(context).size.width < 800
-          ? Container(
-              color: Colors.white38,
-              child: rightSideContent(),
-            )
-          : null,
-      body: SafeArea(
-        child: Stack(
-          alignment: Alignment.topCenter,
-          children: [
-            FlutterEarthGlobe(
-              onZoomChanged: (zoom) {
-                setState(() {});
-              },
-              onTap: (coordinates) {
-                setState(() {
-                  _clickCoordinates = coordinates;
-                });
-              },
-              onHover: (coordinates) {
-                if (coordinates == null) return;
-
-                setState(() {
-                  _hoverCoordinates = coordinates;
-                });
-              },
-              controller: _controller,
-              radius: radius,
+  Widget _buildLegendItem(String label, Color color, String count) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.5),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
             ),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: Colors.blue.withOpacity(0.5)),
-              child: Text(
-                'Commodities Globe',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(color: Colors.white),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            Positioned(top: 10, left: 10, child: getLeftSide()),
-            Positioned(top: 10, right: 10, child: getRightSide()),
-            Positioned(
-                bottom: 0,
-                width: MediaQuery.of(context).size.width,
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 10,
-                  children: [
-                    SizedBox(
-                      width: 250,
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Hover coordinates',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              Text(
-                                  'Latitude: ${_hoverCoordinates?.latitude ?? 0}'),
-                              Text(
-                                  'Longitude: ${_hoverCoordinates?.longitude ?? 0}'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 250,
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Click coordinates',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              Text(
-                                  'Latitude: ${_clickCoordinates?.latitude ?? 0}'),
-                              Text(
-                                  'Longitude: ${_clickCoordinates?.longitude ?? 0}'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )
-                  ],
-                ))
-          ],
-        ),
+              Text(
+                count,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[400],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
