@@ -504,18 +504,36 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
               controller: _controller,
               radius: radius,
             ),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: Colors.blue.withOpacity(0.5)),
-              child: Text(
-                'Commodities Globe',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(color: Colors.white),
-              ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.blue.withOpacity(0.5)),
+                  child: Text(
+                    'Commodities Globe',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    debugPrint('Test button pressed');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Test button pressed!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  child: const Text('Test Button'),
+                ),
+              ],
             ),
             Positioned(top: 10, left: 10, child: getLeftSide()),
             Positioned(top: 10, right: 10, child: getRightSide()),
